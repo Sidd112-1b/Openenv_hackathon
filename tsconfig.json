@@ -1,0 +1,97 @@
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
+
+class Task(BaseModel):
+    id: str
+    name: str
+    description: str
+    difficulty: str
+    initial_content: str
+    initial_history: List[str] = []
+    metadata: Dict[str, Any] = {}
+    grader_config: Dict[str, Any] = {}
+
+def grade_easy_password_reset(action: Dict[str, Any], state: Dict[str, Any]) -> float:
+    """Grader for easy-password-reset task."""
+    if action["tool"] == "lookup_policy":
+        query = action["args"].get("query", "").lower()
+        if "password" in query:
+            state["policy_checked"] = True
+            return 0.2
+    if action["tool"] == "reply" and state.get("policy_checked"):
+        message = action["args"].get("message", "").lower()
+        if "reset" in message and "link" in message:
+            return 1.0
+        elif "reset" in message:
+            return 0.6
+    return 0.0
+
+def grade_medium_billing_dispute(action: Dict[str, Any], state: Dict[str, Any]) -> float:
+    """Grader for medium-billing-dispute task."""
+    if action["tool"] == "search":
+        query = action["args"].get("query", "").lower()
+        if "billing" in query or "invoice" in query:
+            state["searched_billing"] = True
+            return 0.2
+    if action["tool"] == "lookup_policy" and state.get("searched_billing"):
+        query = action["args"].get("query", "").lower()
+        if "refund" in query or "dispute" in query:
+            state["policy_checked"] = True
+            return 0.3
+    if action["tool"] == "reply" and state.get("policy_checked"):
+        message = action["args"].get("message", "").lower()
+        if "refund" in message or "credit" in message:
+            return 1.0
+    return 0.0
+
+def grade_hard_technical_issue(action: Dict[str, Any], state: Dict[str, Any]) -> float:
+    """Grader for hard-technical-issue task."""
+    # Requires: search logs -> lookup policy -> escalate with specific details
+    if action["tool"] == "search":
+        query = action["args"].get("query", "").lower()
+        if "logs" in query or "error" in query:
+            state["searched_logs"] = True
+            return 0.1
+    if action["tool"] == "lookup_policy" and state.get("searched_logs"):
+        query = action["args"].get("query", "").lower()
+        if "escalation" in query or "technical" in query:
+            state["policy_checked"] = True
+            return 0.2
+    if action["tool"] == "escalate" and state.get("policy_checked"):
+        reason = action["args"].get("reason", "").lower()
+        # Must mention the specific error found in logs (NullPointerException)
+        if "technical" in reason and "nullpointerexception" in reason:
+            return 1.0
+        elif "technical" in reason:
+            return 0.5
+    return 0.0
+
+TASKS = [
+    Task(
+        id="easy-password-reset",
+        name="Easy Password Reset",
+        description="User forgot their password. Agent must check policy then provide reset link.",
+        difficulty="easy",
+        initial_content="Hi, I forgot my password. Can you help me reset it?",
+        metadata={"user_loyalty": "silver", "account_status": "active"},
+        grader_config={"grader": grade_easy_password_reset}
+    ),
+    Task(
+        id="medium-billing-dispute",
+        name="Medium Billing Dispute",
+        description="User disputes a charge. Agent must search billing, check refund policy, then reply.",
+        difficulty="medium",
+        initial_content="I see a charge for $50 that I don't recognize. What is this?",
+        metadata={"user_loyalty": "gold", "account_status": "active"},
+        grader_config={"grader": grade_medium_billing_dispute}
+    ),
+    Task(
+        id="hard-technical-issue",
+        name="Hard Technical Issue",
+        description="Complex error. Agent must search logs, check escalation policy, then escalate with details.",
+        difficulty="hard",
+        initial_content="The app keeps crashing with error code 500. I've tried restarting.",
+        metadata={"user_loyalty": "platinum", "account_status": "active"},
+        grader_config={"grader": grade_hard_technical_issue}
+    )
+]

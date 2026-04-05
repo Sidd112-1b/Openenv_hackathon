@@ -1,0 +1,32 @@
+name: customer-support-triage
+version: 0.1.0
+description: A real-world customer support ticket triage and resolution environment.
+author: AI Studio Agent
+license: MIT
+tags: ["openenv", "customer-support", "nlp", "agent"]
+entry_point: main:SupportEnv
+observation_space:
+  type: object
+  properties:
+    ticket_id: {type: string}
+    content: {type: string}
+    history: {type: array, items: {type: string}}
+    available_tools: {type: array, items: {type: string}}
+action_space:
+  type: object
+  properties:
+    tool: {type: string, enum: ["search", "reply", "escalate"]}
+    args: {type: object}
+tasks:
+  - id: easy-password-reset
+    name: Easy Password Reset
+    description: Help a user reset their password.
+    difficulty: easy
+  - id: medium-billing-dispute
+    name: Medium Billing Dispute
+    description: Resolve a billing dispute where the user is missing information.
+    difficulty: medium
+  - id: hard-technical-issue
+    name: Hard Technical Issue
+    description: Resolve a complex technical issue requiring multiple steps.
+    difficulty: hard

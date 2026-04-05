@@ -1,0 +1,20 @@
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Union
+
+class Observation(BaseModel):
+    ticket_id: str = Field(..., description="Unique ID for the ticket")
+    content: str = Field(..., description="Current ticket content or user message")
+    history: List[str] = Field(default_factory=list, description="Previous messages in the thread")
+    available_tools: List[str] = Field(default_factory=lambda: ["search", "reply", "escalate", "lookup_policy"], description="Tools the agent can use")
+    user_context: Dict[str, Any] = Field(default_factory=dict, description="Context about the user (e.g., loyalty, account_status)")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional environment metadata")
+
+class Action(BaseModel):
+    tool: str = Field(..., description="The tool to use: 'search', 'reply', or 'escalate'")
+    args: Dict[str, Any] = Field(default_factory=dict, description="Arguments for the tool (e.g., {'query': '...'} for search)")
+
+class Reward(BaseModel):
+    value: float = Field(..., description="The reward value (-1.0 to 1.0)")
+    reason: str = Field(..., description="Explanation for the reward")
+    done: bool = Field(False, description="Whether the episode is finished")
+    info: Dict[str, Any] = Field(default_factory=dict, description="Additional debugging info")

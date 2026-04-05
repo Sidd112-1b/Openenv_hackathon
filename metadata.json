@@ -1,0 +1,110 @@
+import random
+from typing import List, Dict, Any, Optional, Tuple
+from models import Observation, Action, Reward
+from tasks import TASKS, Task
+
+class SupportEnv:
+    """A real-world customer support ticket triage and resolution environment."""
+    
+    def __init__(self, task_id: Optional[str] = None):
+        self.task_id = task_id or random.choice([t.id for t in TASKS])
+        self.task = next(t for t in TASKS if t.id == self.task_id)
+        self.reset()
+
+    def reset(self) -> Observation:
+        """Reset the environment to the initial state."""
+        self.current_state = {
+            "ticket_id": f"TKT-{random.randint(1000, 9999)}",
+            "content": self.task.initial_content,
+            "history": self.task.initial_history.copy(),
+            "user_context": self.task.metadata.copy(),
+            "metadata": {},
+            "searched_billing": False,
+            "searched_logs": False,
+            "policy_checked": False,
+            "step_count": 0,
+            "max_steps": 10
+        }
+        return self._get_observation()
+
+    def step(self, action: Action) -> Tuple[Observation, Reward, bool, Dict[str, Any]]:
+        """Take a step in the environment."""
+        self.current_state["step_count"] += 1
+        
+        # Handle the action
+        if action.tool == "search":
+            query = action.args.get("query", "").lower()
+            if "billing" in query or "invoice" in query:
+                result = "Found invoice #123 for $50 on 2026-03-20. Status: Paid."
+            elif "logs" in query or "error" in query:
+                result = "Found error logs: 'NullPointerException at line 42 in AuthService'."
+            else:
+                result = f"Search results for '{query}': No specific records found."
+            self.current_state["history"].append(f"Agent searched: {query}")
+            self.current_state["history"].append(f"System: {result}")
+            self.current_state["content"] = result
+        elif action.tool == "lookup_policy":
+            query = action.args.get("query", "").lower()
+            if "password" in query:
+                result = "Policy: Users can reset passwords via the link: https://example.com/reset"
+            elif "refund" in query or "dispute" in query:
+                result = "Policy: Refunds are allowed for unrecognized charges under $100."
+            elif "escalation" in query or "technical" in query:
+                result = "Policy: Escalate 500 errors to the Engineering team with log details."
+            else:
+                result = f"Policy for '{query}': Please contact your supervisor."
+            self.current_state["history"].append(f"Agent checked policy: {query}")
+            self.current_state["history"].append(f"System: {result}")
+            self.current_state["content"] = result
+        elif action.tool == "reply":
+            msg = action.args.get("message", "")
+            self.current_state["history"].append(f"Agent replied: {msg}")
+            self.current_state["content"] = "User: Thank you for the information."
+        elif action.tool == "escalate":
+            reason = action.args.get("reason", "")
+            self.current_state["history"].append(f"Agent escalated: {reason}")
+            self.current_state["content"] = "System: Ticket escalated successfully."
+
+        # Grade the action
+        grader = self.task.grader_config.get("grader")
+        reward_value = grader(action.dict(), self.current_state) if grader else 0.0
+        
+        # Penalize long trajectories
+        reward_value -= 0.02 * self.current_state["step_count"]
+        
+        # Determine if done
+        done = reward_value >= 0.9 or self.current_state["step_count"] >= self.current_state["max_steps"]
+        
+        reward = Reward(
+            value=reward_value,
+            reason=f"Action '{action.tool}' graded with value {reward_value:.2f}",
+            done=done,
+            info={"step": self.current_state["step_count"]}
+        )
+        
+        return self._get_observation(), reward, done, reward.info
+
+    def state(self) -> Dict[str, Any]:
+        """Return the current internal state."""
+        return self.current_state
+
+    def _get_observation(self) -> Observation:
+        """Construct the current observation."""
+        return Observation(
+            ticket_id=self.current_state["ticket_id"],
+            content=self.current_state["content"],
+            history=self.current_state["history"],
+            available_tools=["search", "reply", "escalate", "lookup_policy"],
+            user_context=self.current_state["user_context"],
+            metadata=self.current_state["metadata"]
+        )
+
+if __name__ == "__main__":
+    # Simple test run
+    env = SupportEnv(task_id="easy-password-reset")
+    obs = env.reset()
+    print(f"Initial Observation: {obs.content}")
+    
+    action = Action(tool="reply", args={"message": "Here is your password reset link: https://example.com/reset"})
+    obs, reward, done, info = env.step(action)
+    print(f"Action: {action.tool}, Reward: {reward.value}, Done: {done}")

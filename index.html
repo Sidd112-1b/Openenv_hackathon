@@ -1,0 +1,72 @@
+import os
+import json
+from typing import List, Dict, Any, Optional
+from main import SupportEnv
+from models import Action, Observation
+from tasks import TASKS
+
+# Mock OpenAI client for demonstration
+class MockAgent:
+    def __init__(self, model: str = "gpt-4o"):
+        self.model = model
+
+    def act(self, obs: Observation) -> Action:
+        """Simple rule-based agent for baseline demonstration."""
+        content = obs.content.lower()
+        history = " ".join(obs.history).lower()
+        
+        # Easy Task Logic
+        if "forgot" in content and "password" in content:
+            return Action(tool="lookup_policy", args={"query": "password reset"})
+        if "policy" in content and "reset" in content and "password" in content:
+            return Action(tool="reply", args={"message": "Here is your password reset link: https://example.com/reset"})
+            
+        # Medium Task Logic
+        if "charge" in content or "recognize" in content:
+            return Action(tool="search", args={"query": "billing history"})
+        if "invoice" in content and "50" in content:
+            return Action(tool="lookup_policy", args={"query": "refund policy"})
+        if "refunds are allowed" in content:
+            return Action(tool="reply", args={"message": "I found invoice #123 for $50. Since it's unrecognized, I've issued a refund."})
+            
+        # Hard Task Logic
+        if "crashing" in content or "error" in content:
+            return Action(tool="search", args={"query": "error logs"})
+        if "nullpointerexception" in content:
+            return Action(tool="lookup_policy", args={"query": "escalation policy"})
+        if "escalate 500 errors" in content:
+            return Action(tool="escalate", args={"reason": "Technical issue: NullPointerException found in AuthService logs. Escalating per policy."})
+        
+        return Action(tool="reply", args={"message": "How can I help you today?"})
+
+def run_baseline(task_id: str) -> float:
+    """Run a baseline agent on a specific task and return the total reward."""
+    env = SupportEnv(task_id=task_id)
+    agent = MockAgent()
+    
+    obs = env.reset()
+    total_reward = 0.0
+    done = False
+    
+    print(f"--- Running Task: {task_id} ---")
+    while not done:
+        action = agent.act(obs)
+        obs, reward, done, info = env.step(action)
+        total_reward += reward.value
+        print(f"Step {info['step']}: Action='{action.tool}', Reward={reward.value:.2f}")
+    
+    print(f"Total Reward: {total_reward:.2f}")
+    return total_reward
+
+if __name__ == "__main__":
+    scores = {}
+    for task in TASKS:
+        scores[task.id] = run_baseline(task.id)
+    
+    print("\n--- Baseline Scores Summary ---")
+    for task_id, score in scores.items():
+        print(f"{task_id}: {score:.2f}")
+    
+    # Save scores to file
+    with open("baseline_scores.json", "w") as f:
+        json.dump(scores, f, indent=2)
